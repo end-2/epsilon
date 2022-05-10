@@ -1,7 +1,8 @@
 package epsilon
 
 import (
-	"sync/atomic"
+	"errors"
+	"sync"
 	"time"
 )
 
@@ -17,26 +18,48 @@ const (
 	SequenceNumberMask  = uint32(1)<<SequenceNumberBits - 1
 )
 
+var (
+	ErrSeqNumOverflow = errors.New("sequence number is the maximum! please try again")
+)
+
+// Epsilon is a 64-bit ID(composed of timestamp, pid, seq) generator.
 type Epsilon struct {
 	zeroTime time.Time
-	pid      uint32
+	pid      uint64
 	seq      uint32
+	pre      uint64
+	mutex    sync.Mutex
 }
 
+// New function create Epsilon based on base time and pid.
 func New(zeroTime time.Time, pid uint32) *Epsilon {
 	return &Epsilon{
 		zeroTime: zeroTime,
-		pid:      pid,
+		pid:      uint64(pid&ParentsIDMask) << SequenceNumberBits,
 		seq:      uint32(0),
+		pre:      uint64(0),
+		mutex:    sync.Mutex{},
 	}
 }
 
+// Now function return epsilon current time.
 func (e *Epsilon) Now() uint64 {
 	return uint64(time.Since(e.zeroTime).Nanoseconds())
 }
 
-func (e *Epsilon) Next() uint64 {
-	return (e.Now()&TimestampMask)<<TimestampShiftBits +
-		uint64(e.pid&ParentsIDMask)<<SequenceNumberBits +
-		uint64(atomic.AddUint32(&e.seq, 1)&SequenceNumberMask)
+// Next function return id, if sequential number is full then return ErrSeqNumOverflow.
+func (e *Epsilon) Next() (uint64, error) {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	timestamp := (e.Now() & TimestampMask) << TimestampShiftBits
+	e.seq++
+	if e.pre < timestamp {
+		e.pre = timestamp
+		e.seq = 1
+	}
+	if e.seq == 0 {
+		return 0, ErrSeqNumOverflow
+	}
+	return timestamp + e.pid + uint64(e.seq&SequenceNumberMask), nil
 }
