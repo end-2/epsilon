@@ -1,3 +1,3 @@
-module github.com/colored-paper/epsilon
+module github.com/end-2/epsilon
 
-go 1.15
+go 1.16
