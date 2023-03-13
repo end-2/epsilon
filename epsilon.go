@@ -16,9 +16,13 @@ const (
 	TimestampMask       = ^(uint64(1)<<TimestampCutOffBits - 1)
 	ParentsIDMask       = uint32(1)<<ParentsIDBits - 1
 	SequenceNumberMask  = uint32(1)<<SequenceNumberBits - 1
+
+	MaxPID = uint32((2 << 9) - 1)
+	MaxSeq = uint32((2 << 10) - 1)
 )
 
 var (
+	ErrPIDExceed      = errors.New("pid value exceeds maximum(2^9-1)")
 	ErrSeqNumOverflow = errors.New("sequence number is the maximum! please try again")
 )
 
@@ -27,19 +31,23 @@ type Epsilon struct {
 	zeroTime time.Time
 	pid      uint64
 	seq      uint32
-	pre      uint64
-	mutex    sync.Mutex
+	prevTime uint64
+	mutex    *sync.Mutex
 }
 
 // New function create Epsilon based on base time and pid.
-func New(zeroTime time.Time, pid uint32) *Epsilon {
+func New(zeroTime time.Time, pid uint32) (*Epsilon, error) {
+	if pid > MaxPID {
+		return nil, ErrPIDExceed
+	}
+
 	return &Epsilon{
 		zeroTime: zeroTime,
 		pid:      uint64(pid&ParentsIDMask) << SequenceNumberBits,
 		seq:      uint32(0),
-		pre:      uint64(0),
-		mutex:    sync.Mutex{},
-	}
+		prevTime: uint64(0),
+		mutex:    &sync.Mutex{},
+	}, nil
 }
 
 // Now function return epsilon current time.
@@ -53,13 +61,14 @@ func (e *Epsilon) Next() (uint64, error) {
 	defer e.mutex.Unlock()
 
 	timestamp := (e.Now() & TimestampMask) << TimestampShiftBits
-	e.seq++
-	if e.pre < timestamp {
-		e.pre = timestamp
-		e.seq = 1
-	}
-	if e.seq == 0 {
+	if e.prevTime < timestamp {
+		e.prevTime = timestamp
+		e.seq = 0
+		return timestamp + e.pid + uint64(0), nil
+	} else if e.seq > MaxSeq {
 		return 0, ErrSeqNumOverflow
+	} else {
+		e.seq++
+		return timestamp + e.pid + uint64(e.seq&SequenceNumberMask), nil
 	}
-	return timestamp + e.pid + uint64(e.seq&SequenceNumberMask), nil
 }

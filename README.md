@@ -13,20 +13,34 @@
 ### How to use
 1. Add the epsilon package to your project dependencies (go.mod).
 ```shell
-go get github.com/colored-paper/epsilon
+go get github.com/end-2/epsilon
 ```
-2. Add import `github.com/colored-paper/epsilon` to your source code.
+2. Add import `github.com/end-2/epsilon` to your source code.
+
 ```go
 package main
 
 import (
+	"fmt"
+	"log"
 	"time"
-	
-	"github.com/colored-paper/epsilon"
+
+	"github.com/end-2/epsilon"
 )
 
 func main() {
-	e := epsilon.New(time.Now(), pid)
+	// pid can be from 0 to 2^9-1
+	pid := uint32(0)
+	e, err := epsilon.New(time.Now(), pid)
+	if err != nil {
+		log.Fatal(err)
+	}
 	id, err := e.Next()
+	if err != nil {
+		fmt.Println(err)
+    }
+	fmt.Println(id)
 }
 ```
+
+#### If you want to see the form of the generated ID, use "go test -v" command.
